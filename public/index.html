@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World Builder</title>
+<style>
+  :root { --bg: #232019; --parch: #f3e6c8; --ink: #3a2c17; --muted: #8a7550; --line: #d8c294; --gold: #b8860b; --deep: #5a3e1b; --green: #2f6f3e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(circle at 50% 0, #3a342a, var(--bg) 70%); color: #efe6d2; font: 16px/1.55 system-ui, "Segoe UI", sans-serif; min-height: 100vh; }
+  main { max-width: 900px; margin: 0 auto; padding: 26px 16px 56px; }
+  h1 { font: 700 38px/1.1 Georgia, serif; margin: 0; } h1 span { color: #e9c46a; } .sub { color: #bfb398; margin: 4px 0 8px; }
+  #status { font-size: 13px; color: #bfb398; margin: 0 0 12px; } #status.ok { color: #9ee6a8; } #status.err { color: #ff9a9a; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .controls input { flex: 1 1 240px; }
+  select, input { font: inherit; padding: 9px 12px; border: 1px solid #5c5444; border-radius: 10px; background: #2f2b23; color: #efe6d2; min-width: 0; }
+  select:focus-visible, input:focus-visible, button:focus-visible, .sec [contenteditable]:focus-visible { outline: 3px solid #e9c46a; outline-offset: 2px; }
+  button { font: inherit; font-weight: 700; padding: 10px 18px; border: 0; border-radius: 10px; background: #e9c46a; color: #2a1e00; cursor: pointer; }
+  button.ghost { background: transparent; color: inherit; border: 1px solid var(--line); padding: 4px 10px; font-size: 13px; } button.busy { opacity: .55; cursor: progress; }
+  .note { color: #bfb398; font-size: 14px; min-height: 20px; margin: 8px 0 12px; }
+  .map { background: var(--parch); color: var(--ink); border-radius: 6px; padding: 26px 28px; box-shadow: inset 0 0 60px rgba(120,80,20,.35), 0 18px 40px rgba(0,0,0,.5); }
+  .map h2 { font: 700 34px/1.1 Georgia, serif; margin: 0; text-align: center; color: var(--deep); outline: none; } .tag { text-align: center; font: italic 18px Georgia, serif; color: var(--muted); margin: 4px 0 18px; }
+  .secs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; } @media (max-width: 640px) { .secs { grid-template-columns: 1fr; } } .sec.wide { grid-column: 1 / -1; }
+  .sec h3 { font: 800 12px system-ui; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); margin: 0 0 4px; display: flex; justify-content: space-between; align-items: center; }
+  .sec h3 button { color: var(--deep); } .sec [contenteditable] { font: 16px/1.55 Georgia, serif; min-height: 24px; border-radius: 4px; padding: 2px 4px; } .sec [contenteditable]:hover { background: rgba(184,134,11,.08); }
+  .places { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; } .place { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; } .place b { font-family: Georgia, serif; display: block; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; } .map .row button.ghost { color: var(--deep); }
+  #src { font-size: 13px; color: var(--muted); text-align: center; margin: 16px 0 0; } h2.g { font: 700 22px Georgia, serif; margin: 26px 0 8px; }
+  .gal { display: flex; gap: 8px; flex-wrap: wrap; } .empty { color: #bfb398; } .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>World <span>Builder</span></h1>
+  <p class="sub">Invent a whole world for your story or game. Rewrite any part with ↻, or edit by typing right on the map.</p>
+  <p id="status">Checking the AI world builder...</p>
+  <div class="controls">
+    <select id="genre" aria-label="Genre"><option>fantasy</option><option>science fiction</option><option>post-apocalyptic</option><option>steampunk</option><option>underwater</option><option>cozy village</option><option>sky islands</option></select>
+    <input id="seed" placeholder="Optional idea, e.g. a city built on the back of a giant turtle" maxlength="200" autocomplete="off" aria-label="Starting idea">
+    <button id="go">Build a world</button>
+  </div>
+  <p class="note" id="note"></p>
+
+  <section class="map hidden" id="map" aria-live="polite">
+    <h2 id="name" contenteditable="true" spellcheck="false" aria-label="World name"></h2>
+    <div class="tag" id="tagline" contenteditable="true" aria-label="Tagline"></div>
+    <div class="secs" id="secs"></div>
+    <div class="sec wide" style="margin-top:14px"><h3>Places to visit <button class="ghost" data-field="places">↻ New places</button></h3><div class="places" id="places"></div></div>
+    <div class="row"><button class="ghost" id="save">Save world</button><button class="ghost" id="dl">Download as text</button><button class="ghost" id="copy">Copy</button></div>
+    <p id="src"></p>
+  </section>
+
+  <h2 class="g">My worlds</h2><div class="gal" id="gallery"></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const SECS = [["geography", "Geography"], ["climate", "Climate"], ["peoples", "Peoples"], ["power", "Magic / technology"], ["conflict", "The big conflict", true], ["secret", "A secret few know", true]];
+// Built-in pieces for when the AI isn't ready yet
+const BANK = {
+  name: ["Vellmora", "The Shattered Reach", "Aurelune", "Kethra Deep", "Brightmoor", "Isles of Ember"],
+  tagline: ["Where the sea remembers every ship it swallowed.", "A world stitched together from broken moons.", "Every lantern here holds a tiny, sleeping star."],
+  geography: ["Floating islands drift above a sea of clouds, linked by rope bridges and wind-rafts.", "A giant canyon splits the land in two, with cities carved into both walls.", "Endless forests of glass trees ring out like bells when the wind blows."],
+  climate: ["It rains upward once a year, on the Festival of Rising Water.", "Seasons last seven years each, so children grow up knowing only one.", "Warm by day, freezing by night, with glowing auroras every evening."],
+  peoples: ["Sky-sailors who trade in bottled weather live beside quiet mountain monks.", "Clockwork artisans share the land with a tribe of giant, gentle owls.", "Merchant families rule the cities, while wandering storytellers keep the old history alive."],
+  power: ["Magic is powered by music: every spell must be sung in tune.", "Steam engines run on crystals mined from fallen stars.", "People can borrow memories from each other, but must always give them back."],
+  conflict: ["The crystals are running out, and the two great cities blame each other.", "An ancient dragon has woken up and is asking for something it was promised long ago.", "The floating islands are slowly sinking, and nobody knows why."],
+  secret: ["The first queen never died: she became the wind.", "The moon is actually a giant sleeping creature.", "The map everyone uses was drawn wrong on purpose."],
+  places: [[{ name: "The Whispering Market", about: "A night market where you pay with secrets instead of coins." }, { name: "Lantern Falls", about: "A waterfall that glows gold at midnight." }, { name: "The Hollow Library", about: "A library inside a giant tree, guarded by owls." }],
+           [{ name: "Port Gearwick", about: "A noisy harbor of steam ships and inventors." }, { name: "The Glass Steppes", about: "Plains where the grass is made of crystal." }, { name: "Skyreach Monastery", about: "A temple so high it's above the clouds." }]],
+};
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+let world = null, busy = false, ai = { ready: false, message: "Loading...", percent: null, error: null };
+let gallery = []; try { gallery = JSON.parse(localStorage.getItem("worlds") || "[]"); } catch {}
+const persist = () => { try { localStorage.setItem("worlds", JSON.stringify(gallery)); } catch {} };
+
+function readEdits() { if (!world) return; world.name = $("name").textContent.trim(); world.tagline = $("tagline").textContent.trim(); SECS.forEach(([f]) => { const el = document.querySelector('[data-text="' + f + '"]'); if (el) world[f] = el.textContent.trim(); });
+  document.querySelectorAll(".place").forEach((p, i) => { if (world.places[i]) { world.places[i].name = p.querySelector("b").textContent.trim(); world.places[i].about = p.querySelector("span").textContent.trim(); } }); }
+function draw() {
+  $("map").classList.remove("hidden"); $("name").textContent = world.name; $("tagline").textContent = world.tagline; const box = $("secs"); box.innerHTML = "";
+  SECS.forEach(([f, label, wide]) => { const s = document.createElement("div"); s.className = "sec" + (wide ? " wide" : ""); const h = document.createElement("h3"); h.textContent = label; const b = document.createElement("button"); b.className = "ghost"; b.dataset.field = f; b.textContent = "\u21bb"; b.setAttribute("aria-label", "Rewrite " + label); h.append(b);
+    const t = document.createElement("div"); t.contentEditable = "true"; t.dataset.text = f; t.textContent = world[f] || ""; t.setAttribute("aria-label", label); s.append(h, t); box.append(s); });
+  const pl = $("places"); pl.innerHTML = ""; world.places.forEach((p) => { const d = document.createElement("div"); d.className = "place"; const b = document.createElement("b"); b.contentEditable = "true"; b.textContent = p.name; const s = document.createElement("span"); s.contentEditable = "true"; s.textContent = p.about; d.append(b, s); pl.append(d); });
+}
+function bankWorld() { const w = {}; ["name", "tagline", "geography", "climate", "peoples", "power", "conflict", "secret"].forEach((f) => (w[f] = pick(BANK[f]))); w.places = pick(BANK.places).map((p) => ({ ...p })); return w; }
+async function build() {
+  if (busy) return; const genre = $("genre").value;
+  if (!ai.ready) { world = bankWorld(); world.genre = genre; draw(); $("src").textContent = "Mixed from the built-in idea bank (AI loading)"; $("note").textContent = (ai.error ? "The AI isn't available" : "The AI is still loading" + (ai.percent != null ? " (" + ai.percent + "%)" : "")) + ", so this world was mixed from built-in ideas."; return; }
+  busy = true; $("go").classList.add("busy"); $("note").textContent = "Shaping mountains and oceans...";
+  try { const res = await fetch("/api/world", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ genre, seed: $("seed").value }) }); const r = await res.json(); if (!res.ok) throw new Error(r.error);
+    world = { ...r, genre }; draw(); $("src").textContent = "Built by the on-device AI \u00b7 " + genre; $("note").textContent = ""; }
+  catch (err) { $("note").textContent = "Couldn't build a world: " + err.message; }
+  busy = false; $("go").classList.remove("busy");
+}
+async function rewrite(field, btn) {
+  if (busy || !world) return; readEdits();
+  if (!ai.ready) { world[field] = field === "places" ? pick(BANK.places).map((p) => ({ ...p })) : pick(BANK[field]); draw(); return; }
+  busy = true; btn.classList.add("busy"); $("note").textContent = "Rewriting " + field + "...";
+  try { const res = await fetch("/api/section", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ field, world, genre: world.genre }) }); const r = await res.json(); if (!res.ok) throw new Error(r.error); world[field] = r.value; draw(); $("note").textContent = "New " + field + " written. Everything else stayed the same."; }
+  catch (err) { $("note").textContent = "Couldn't rewrite that part: " + err.message; }
+  busy = false; btn.classList.remove("busy");
+}
+$("map").addEventListener("click", (e) => { const b = e.target.closest("button[data-field]"); if (b) rewrite(b.dataset.field, b); });
+$("go").addEventListener("click", build); $("seed").addEventListener("keydown", (e) => { if (e.key === "Enter") build(); });
+function asText() { readEdits(); return "# " + world.name + "\n_" + world.tagline + "_\n\n" + SECS.map(([f, l]) => "## " + l + "\n" + world[f]).join("\n\n") + "\n\n## Places\n" + world.places.map((p) => "- " + p.name + ": " + p.about).join("\n"); }
+$("dl").addEventListener("click", () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([asText()], { type: "text/plain" })); a.download = (world.name || "world").replace(/[^\w-]+/g, "-").toLowerCase() + ".md"; a.click(); });
+$("copy").addEventListener("click", async () => { try { await navigator.clipboard.writeText(asText()); $("copy").textContent = "Copied!"; } catch { $("copy").textContent = "Press Ctrl+C"; } setTimeout(() => ($("copy").textContent = "Copy"), 1200); });
+$("save").addEventListener("click", () => { readEdits(); gallery = [JSON.parse(JSON.stringify(world)), ...gallery.filter((w) => w.name !== world.name)].slice(0, 30); persist(); drawGallery(); $("save").textContent = "Saved!"; setTimeout(() => ($("save").textContent = "Save world"), 1000); });
+function drawGallery() { const box = $("gallery"); box.innerHTML = gallery.length ? "" : '<p class="empty">Saved worlds appear here.</p>';
+  gallery.forEach((w) => { const b = document.createElement("button"); b.className = "ghost"; b.style.color = "#efe6d2"; b.style.padding = "8px 14px"; b.textContent = "\ud83c\udf0d " + w.name; b.addEventListener("click", () => { world = JSON.parse(JSON.stringify(w)); draw(); $("src").textContent = "Opened from your saved worlds"; }); box.append(b); }); }
+
+async function checkStatus() {
+  try { ai = await (await fetch("/api/status")).json();
+    if (ai.error) return setStatus("AI error: " + ai.error + ". The built-in idea bank still works.", "err");
+    if (ai.ready) return setStatus("AI world builder ready. It runs on your device.", "ok");
+    setStatus(ai.message + (ai.percent != null ? " " + ai.percent + "%" : "") + " The built-in idea bank works meanwhile.");
+  } catch { ai = { ready: false, error: "the server can't be reached" }; setStatus("Can't reach the server. Open http://localhost:3068 and make sure npm start is running.", "err"); return; }
+  setTimeout(checkStatus, 1500);
+}
+function setStatus(t, c = "") { $("status").textContent = t; $("status").className = c; }
+drawGallery(); checkStatus();
+</script>
+</body>
+</html>
