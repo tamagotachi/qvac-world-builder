@@ -1,0 +1,10 @@
+{
+  "name": "qvac-world-builder",
+  "version": "1.0.0",
+  "description": "World Builder: an on-device AI invents a whole fictional world for your story or game (geography, peoples, conflict, places) and can rewrite any part. Powered by the QVAC SDK.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "@qvac/sdk": "^0.19.0" },
+  "license": "MIT"
+}
